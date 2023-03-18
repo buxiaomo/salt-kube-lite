@@ -1,0 +1,147 @@
+# -*- coding: utf-8 -*-
+# vim: ft=yaml
+---
+
+{%- set py_ver_repr = salt['pillar.get']('salt:py_ver', '') %}
+
+{%- set osrelease = salt['grains.get']('osrelease', '') %}
+{%- set salt_release = salt['pillar.get']('salt:release', 'latest') %}
+{%- if salt_release.split('.')|length >= 3 %}
+{%-   set salt_release = 'archive/' ~ salt_release %}
+{%- endif %}
+{%- set osfamily_lower =  salt['grains.get']('os_family')|lower %}
+{%- set osmajorrelease = salt['grains.get']('osmajorrelease', osrelease)|string %}
+{%- set oscodename = salt['grains.get']('oscodename') %}
+{%- set opensuse_repo_suffix = 'Leap_' ~ osrelease if salt['grains.get']('osfinger', '') == 'Leap-15' else 'Tumbleweed' %}
+{%- set salt_repo = salt['pillar.get']('salt:repo', 'https://repo.saltstack.com') %}
+
+#from template-formula
+{%- if grains.os_family == 'MacOS' %}
+{%-   set rootuser = salt['cmd.run']("stat -f '%Su' /dev/console") %}
+{%-   set rootgroup = salt['cmd.run']("stat -f '%Sg' /dev/console") %}
+{%- elif grains.os_family == 'Windows' %}
+{%-   set rootuser = salt['cmd.run']("id -un") %}
+{%- endif %}
+
+
+Debian:
+  pkgrepo: 'deb {{ salt_repo }}/{{ py_ver_repr or 'apt' }}/{{ osfamily_lower }}/{{ osmajorrelease }}/amd64/{{ salt_release }} {{ oscodename }} main'
+  key_url: '{{ salt_repo }}/{{ py_ver_repr or 'apt' }}/{{ osfamily_lower }}/{{ osmajorrelease }}/amd64/{{ salt_release }}/SALTSTACK-GPG-KEY.pub'
+  libgit2: libgit2-22
+  pyinotify: python-pyinotify
+  gitfs:
+    pygit2:
+      install_from_source: true
+      version: 0.22.1
+      git:
+        require_state: false
+        install_from_package: git
+      libgit2:
+        install_from_source: false
+
+RedHat:
+  pkgrepo_name: saltstack
+  pkgrepo_humanname: SaltStack repo for RHEL/CentOS $releasever
+  pkgrepo: '{{ salt_repo }}/{{ py_ver_repr or 'yum' }}/redhat/$releasever/$basearch/{{ salt_release }}'
+  key_url: '{{ salt_repo }}/{{ py_ver_repr or 'yum' }}/redhat/$releasever/$basearch/{{ salt_release }}/SALTSTACK-GPG-KEY.pub'
+  pygit2: python-pygit2
+  python_git: GitPython
+  gitfs:
+    gitpython:
+      install_from_source: false
+    pygit2:
+      install_from_source: false
+      git:
+        require_state: false
+        install_from_package: git
+  master:
+    gitfs_provider: pygit2
+
+Suse:
+  pkgrepo_humanname: 'Salt releases for SLE-based SUSE products (openSUSE_{{ opensuse_repo_suffix }})'
+  pkgrepo: 'https://download.opensuse.org/repositories/systemsmanagement:/saltstack/openSUSE_{{ opensuse_repo_suffix }}/'
+  key_url: 'https://download.opensuse.org/repositories/systemsmanagement:/saltstack/openSUSE_{{ opensuse_repo_suffix }}/repodata/repomd.xml.key'
+  pygit2: python-pygit2
+  pyinotify: python-pyinotify
+  gitfs:
+    pygit2:
+      install_from_source: false
+      git:
+        require_state: false
+        install_from_package: git
+  master:
+    gitfs_provider: pygit2
+
+Gentoo:
+  salt_master: app-admin/salt
+  salt_minion: app-admin/salt
+  salt_syndic: app-admin/salt
+  salt_api: app-admin/salt
+  salt_cloud: app-admin/salt
+  pyinotify: dev-python/pyinotify
+
+Arch:
+  salt_master: salt
+  salt_minion: salt
+  salt_syndic: salt
+  salt_cloud: salt
+  salt_api: salt
+  salt_ssh: salt
+  python_git: python2-gitpython
+  pygit2: python2-pygit2
+  libgit2: libgit2
+  pyinotify: python2-pyinotify
+
+Alpine:
+  salt-master: salt-master
+  salt_minion: salt-minion
+  salt_syndic: salt-syndic
+  salt_cloud: salt-cloud
+  salt_api: salt-api
+  salt_ssh: salt-ssh
+  pygit2: py2-pygit2
+  libgit2: libgit2
+
+FreeBSD:
+  rootgroup: wheel
+  salt_master: {{ py_ver_repr or 'py27' }}-salt
+  salt_minion: {{ py_ver_repr or 'py27' }}-salt
+  salt_syndic: {{ py_ver_repr or 'py27' }}-salt
+  salt_cloud: {{ py_ver_repr or 'py27' }}-salt
+  salt_api: {{ py_ver_repr or 'py27' }}-salt
+  salt_ssh: {{ py_ver_repr or 'py27' }}-salt
+  python_git: {{ py_ver_repr or 'py27' }}-GitPython
+  pygit2: {{ py_ver_repr or 'py27' }}-pygit2
+  config_path: /usr/local/etc/salt
+  minion_service: salt_minion
+  master_service: salt_master
+  api_service: salt_api
+  syndic_service: salt_syndic
+
+OpenBSD:
+  salt_master: salt
+  salt_minion: salt
+  salt_syndic: salt
+  salt_cloud: salt
+  salt_api: salt
+  salt_ssh: salt
+  config_path: /etc/salt
+  minion_service: salt_minion
+  master_service: salt_master
+  python_git: py-GitPython
+
+Windows:
+  salt_minion: salt-minion{{ '-' ~ py_ver_repr if py_ver_repr else '' }}
+  config_path: 'C:\salt\conf'
+  minion_service: salt-minion
+  rootuser: {{ rootuser | d('') }}
+
+MacOS:
+  salt_minion: salt
+  salt_minion_pkg_source: ''
+  salt_minion_pkg_hash: ''
+  config_path: /private/etc/salt
+  minion_service: com.saltstack.salt.minion
+  ## from template-formula
+  rootuser: {{ rootuser | d('') }}
+  rootgroup: {{ rootgroup | d('') }}

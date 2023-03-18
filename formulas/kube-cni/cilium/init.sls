@@ -1,0 +1,1 @@
+# remove bpf mount on ubuntu 20.04, not requierd

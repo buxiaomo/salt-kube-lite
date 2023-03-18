@@ -1,0 +1,115 @@
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /opt/promtail/positions.yaml
+
+clients:
+  - url: http://172.16.10.100:3100/loki/api/v1/push
+    backoff_config:
+      min_period: 100ms
+      max_period: 10s
+      max_retries: 10
+
+scrape_configs:
+{%- if 'systemd-journal' in pillar['promtail_type'] %}
+  - job_name: systemd-journal
+    journal:
+      max_age: 12h
+      labels:
+        job: systemd-journal
+        environment: {{ saltenv |upper }}
+        roles: {{salt['grains.get']('roles', []) | join(',') | yaml_encode}}
+    relabel_configs:
+      - source_labels:
+        - __journal__systemd_unit
+        target_label: unit
+      - source_labels:
+        - __journal__hostname
+        target_label: nodename
+      - source_labels:
+        - __journal_syslog_identifier
+        target_label: syslog_identifier
+{%- endif %}
+{%- if 'nginx' in pillar['promtail_type'] %}
+  - job_name: nginx
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: nginx
+          app: nginx
+          environment: {{ saltenv |upper }}
+          roles: {{salt['grains.get']('roles', []) | join(',') | yaml_encode}}
+          nodename: {{ salt['grains.get']('nodename', 'ERROR') | yaml_encode}}
+          __path__: /var/log/nginx/*log
+    pipeline_stages:
+      - match:
+          selector: '{app="nginx"}'
+          stages:
+          - regex:
+              expression: '^(?P<remote_addr>[\w\.]+) - (?P<remote_user>[^ ]*) \[(?P<time_local>.*)\] "(?P<method>[^ ]*) (?P<request>[^ ]*) (?P<protocol>[^ ]*)" (?P<status>[\d]+) (?P<body_bytes_sent>[\d]+) "(?P<http_referer>[^"]*)" "(?P<http_user_agent>[^"]*)"?'
+          - labels:
+              remote_addr:
+              remote_user:
+              time_local:
+              method:
+              request:
+              protocol:
+              status:
+              body_bytes_sent:
+              http_referer:
+              http_user_agent:
+{%- endif %}
+{%- if 'kube-audit' in pillar['promtail_type'] %}
+  - job_name: kube-audit
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: "kube-audit"
+          app: "kube-audit"
+          environment: {{ saltenv |upper }}
+          roles: {{salt['grains.get']('roles', []) | join(',') | yaml_encode}}
+          nodename: {{ salt['grains.get']('nodename', 'ERROR') | yaml_encode}}
+          __path__: /var/log/audit.log
+    pipeline_stages:
+      - match:
+          selector: '{app="kube-audit"}'
+          stages:
+          - json:
+              expressions:
+                level: level
+                requestReceivedTimestamp: requestReceivedTimestamp
+                stage: stageStatus
+                stageTimestamp: stageTimes
+                user: user
+                userAgent: userAgent
+                requestURI: requestURI
+                objectRef: objectRef
+                auditID: auditID
+                annotations: annotations
+                verb: verb
+          - json:
+              expressions:
+                username:
+                groups:
+              source: user
+          - json:
+              expressions:
+                resource:
+                namespace:
+                name:
+                apiVersion:
+              source: objectRef
+          - labels:
+              level:
+              resource:
+              namespace:
+              name:
+              apiVersion:
+              username:
+              groups:
+              userAgent:
+{%- endif %}
